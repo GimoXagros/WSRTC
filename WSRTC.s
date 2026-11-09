@@ -292,6 +292,9 @@ readCont:
 	bne outOfData
 	tst r1,#0x80
 	subne r1,r1,#0x12
+	and r3,r1,#0x0F			;@ Correct the BCD borrow for 20/21 -> 08/09.
+	cmp r3,#0x0A
+	subpl r1,r1,#0x06
 
 	mov r0,r1
 	bx lr
@@ -344,6 +347,9 @@ fixupHour:
 	movpl r1,#0
 	tst r1,#0x80
 	addne r1,r3,#0x12
+	and r3,r1,#0x0F			;@ Correct the BCD carry for PM 08/09 -> 20/21.
+	cmp r3,#0x0A
+	addpl r1,r1,#0x06
 fix24hMode:
 	and r1,r1,#0x3F
 	cmp r1,#0x24

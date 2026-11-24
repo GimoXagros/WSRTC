@@ -158,6 +158,9 @@ invalidSecond:
 
 checkForAlarm:
 	ldrb r3,[rtcptr,#rtcConfiguration]	;@ Configuration
+	and r2,r3,#0x0A
+	cmp r2,#0x0A
+	beq minuteSteady
 	ands r2,r3,#0x2A				;@ Any interrupts enabled?
 	beq handleAlarm
 	ldrb r1,[rtcptr,#rtcSecond]		;@ Seconds
@@ -170,6 +173,12 @@ checkForAlarm:
 	cmpeq r1,r2
 	movne r2,#0
 	moveq r2,#1
+	b handleAlarm
+minuteSteady:
+	ldrb r1,[rtcptr,#rtcSecond]
+	cmp r1,#0x30				;@ Packed BCD: high for the first half-minute.
+	movlo r2,#1
+	movhs r2,#0
 handleAlarm:
 	ldr r1,[rtcptr,#rtcInterruptPtr]
 	mov r0,r2
@@ -264,6 +273,8 @@ wsRtcDataW:					;@ r0=rtcptr, r1 = value
 	add r3,r2,#1
 	strb r3,[rtcptr,#rtcIndex]
 	bne readCont
+	cmp r2,#rtcConfiguration
+	beq writeConfiguration
 	cmp r2,#rtcData
 	bpl fixupRet
 	subs r3,r2,#rtcYear
@@ -272,6 +283,27 @@ wsRtcDataW:					;@ r0=rtcptr, r1 = value
 	.long fixupYear,fixupMonth,fixupDay,fixupWeekDay,fixupHour,fixupMinute,fixupSecond,fixupAlarmH,fixupAlarmM
 fixupSecond:
 	and r1,r1,#0x7F
+	strb r1,[rtcptr,#rtcSecond]
+	mov r2,#0xFF
+	strb r2,[rtcptr,#rtcData]
+	ldrb r3,[rtcptr,#rtcConfiguration]
+	and r3,r3,#0x0A
+	cmp r3,#0x0A
+	beq minuteSteady
+	b outOfData
+writeConfiguration:
+	ldrb r3,[rtcptr,#rtcConfiguration]
+	strb r1,[rtcptr,#rtcConfiguration]
+	mov r2,#0xFF
+	strb r2,[rtcptr,#rtcData]
+	and r2,r1,#0x0A
+	cmp r2,#0x0A
+	beq minuteSteady
+	and r3,r3,#0x0A
+	cmp r3,#0x0A
+	moveq r2,#0
+	beq handleAlarm				;@ Release the previous steady output.
+	b outOfData
 fixupRet:
 	strb r1,[rtcptr,r2]
 fixupDone:
@@ -407,12 +439,23 @@ wsRtcCommandW:				;@ r0=rtcptr, r1 = value
 	strb r3,[rtcptr,#rtcLength]
 	strb r1,[rtcptr,#rtcCommand]
 
-	beq rtcReset
+	beq commandReset
 	tst r1,#1					;@ Read?
 	bxne lr
 	ldrb r1,[rtcptr,#rtcData]
 	cmp r1,#0xFF
 	bne wsRtcDataW
 	bx lr
+
+commandReset:
+	ldrb r2,[rtcptr,#rtcConfiguration]
+	and r2,r2,#0x0A
+	cmp r2,#0x0A
+	bne rtcReset
+	push {r0,lr}
+	bl rtcReset
+	pop {r0,lr}
+	mov r2,#0
+	b handleAlarm
 
 #endif // __arm__
